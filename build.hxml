@@ -1,0 +1,12 @@
+-lib assimp-haxe
+-lib msgpack-haxe
+
+-cp src
+-main Main
+-cpp bin
+
+-D NODEFAULTLIB:LIBCMT
+-D NODEFAULTLIB:LIBCMTD
+-D NODEFAULTLIB:MSVCRT
+
+-D ABI=-MD
