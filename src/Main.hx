@@ -11,6 +11,7 @@ import assimp.AiTextureType;
 import cpp.Lib;
 import assimp.AssimpImporter;
 import cpp.Pointer;
+import cpp.Star;
 import cpp.zip.Compress;
 import haxe.Json;
 import haxe.io.Bytes;
@@ -31,7 +32,7 @@ import sys.io.File;
     </files>
     
     <target id="haxe">
-        <lib name = "../lib/assimp-vc140.lib" if = "windows" />
+        <lib name = "../lib/assimp.lib" if="windows" />
     </target>
 ')
 
@@ -189,28 +190,59 @@ class Main
         
         if (scene.ptr.hasMaterials()) {
             var diffuseTexture:String = "";
-            var diffuseColor:Vec3Struct = {x: 0, y: 0, z: 0};
-            
+            var normalsTexture:String = "";
+            var diffuseColor:Vec4Struct = {x: 0, y: 0, z: 0, w: 0};
             if (aiMesh.ptr.materialIndex >= 0) {
                 var aiMaterial:Pointer<AiMaterial> = scene.ptr.materials[aiMesh.ptr.materialIndex];
-                var count:Int = aiMaterial.ptr.getTextureCount(AiTextureType.aiTextureType_DIFFUSE);
-                for (l in 0...count) {
-                    var path:Pointer<AiString> = AiString.create();
-                    aiMaterial.ptr.getTexture(AiTextureType.aiTextureType_DIFFUSE, l, path.ptr);
-                    diffuseTexture = path.ptr.c_str().toString();
-                    path.destroy();
-                    path = null;
+                var path:Pointer<AiString> = AiString.create();
+                
+                var diffuseCount:Int = aiMaterial.ptr.getTextureCount(AiTextureType.aiTextureType_DIFFUSE);
+                if (diffuseCount > 0) {
+                    aiMaterial.ptr.getTexture(AiTextureType.aiTextureType_DIFFUSE, 0, path.ptr);
+                    diffuseTexture =  path.ptr.c_str().toString();
                 }
+                
+                var normalsCount:Int = aiMaterial.ptr.getTextureCount(AiTextureType.aiTextureType_NORMALS);
+                if (normalsCount > 0) {
+                    aiMaterial.ptr.getTexture(AiTextureType.aiTextureType_NORMALS, 0, path.ptr);
+                    normalsTexture = path.ptr.c_str().toString();
+                }
+                
+                path.destroy();
+                path = null;
             }
             
             mesh.material = {
                 diffuseTexture: diffuseTexture,
+                normalsTexture: normalsTexture,
                 diffuseColor: diffuseColor
             };
         }
         
         outputModel.meshes.push(mesh);
     }
+    
+    /*private static function getTextures(aiMaterial:Star<AiMaterial>, count:Int, type:String):Array<String>
+    {
+        var textures:Array<String> = new Array<String>();
+        
+        for (i in 0...count) {
+            var path:Pointer<AiString> = AiString.create();
+            switch(type) {
+                case "diffuse": {
+                    aiMaterial.getTexture(AiTextureType.aiTextureType_DIFFUSE, i, path.ptr);
+                }
+                case "normals": {
+                    aiMaterial.getTexture(AiTextureType.aiTextureType_NORMALS, i, path.ptr);
+                }
+            }
+            textures.push(path.ptr.c_str().toString());
+            path.destroy();
+            path = null;
+        }
+        
+        return textures;
+    }*/
     
 }
 
@@ -257,6 +289,7 @@ typedef Mat4Struct =
 typedef MaterialStruct =
 {
     var diffuseTexture:String;
+    var normalsTexture:String;
     var diffuseColor:Vec3Struct;
 }
 
