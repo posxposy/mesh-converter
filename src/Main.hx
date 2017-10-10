@@ -12,6 +12,7 @@ import cpp.Lib;
 import assimp.AssimpBuild;
 import assimp.AssimpImporter;
 import cpp.Pointer;
+import cpp.zip.Compress;
 import haxe.Json;
 import haxe.io.Bytes;
 import org.msgpack.MsgPack;
@@ -27,7 +28,7 @@ class Main
     private static var importer:AssimpImporter;
     private static var scene:Pointer<AiScene>;
     private static var outputModel:ModelStruct;
-    
+    private static var calcTangents:Bool = false;
     public static function main():Void
     {
         var args:Array<String> = Sys.args();
@@ -40,19 +41,33 @@ class Main
         }
         
         var outputFile:String = args[1] != null ? args[1] : "out.3Dmodel";
-        var pack:Bool = true; 
-        for (i in 1...args.length) {
-            if (args[i] == "no-packing") {
-                pack = false;
-                break;
+        var bin:Bool = false;
+        var zip:Bool = false;
+        var flags:Int = AiPostProcess.flipUVs;
+        
+        for (i in 1...args.length) { 
+            switch(args[i]) {
+                case "triangulate": {
+                    flags |= AiPostProcess.triangulate;
+                }
+                case "calctangents": {
+                    flags |= AiPostProcess.calcTangentSpace;
+                    calcTangents = true;
+                }
+                case "bin": {
+                    bin = true;
+                }
+                case "zip": {
+                    zip = true;
+                }
             }
         }
         
         importer = new AssimpImporter();
-        scene = importer.readFile(inputFile, AiPostProcess.triangulate | AiPostProcess.flipUVs);
+        scene = importer.readFile(inputFile, flags);
         if (scene == null || scene.ptr.flags == AiScene.AI_SCENE_FLAGS_INCOMPLETE || scene.ptr.rootNode == null) {
             Lib.println("Something went wrong.");
-            return null;
+            return;
         }
         
         outputModel = {
@@ -61,8 +76,9 @@ class Main
         
         processNode(scene.ptr.rootNode);
         
-        if (pack) {
+        if (bin) {
             var bytes:Bytes = MsgPack.encode(outputModel);
+            if (zip) bytes = Compress.run(bytes, 3);
             File.saveBytes(outputFile, bytes);
         } else {
             File.saveContent(outputFile, Json.stringify(outputModel));
@@ -88,6 +104,8 @@ class Main
         var indices:Array<Int> = new Array<Int>();
         var vertices:Array<Float> = new Array<Float>();
         var normals:Array<Float> = new Array<Float>();
+        var tangents:Array<Float> = new Array<Float>();
+        var bitangents:Array<Float> = new Array<Float>();
         var uv:Array<Float> = new Array<Float>();
         
         for (i in 0...aiMesh.ptr.numVertices) {
@@ -95,9 +113,23 @@ class Main
             vertices.push(aiMesh.ptr.vertices[i].y);
             vertices.push(aiMesh.ptr.vertices[i].z);
             
+            normals.push(aiMesh.ptr.normals[i].x);
+            normals.push(aiMesh.ptr.normals[i].y);
+            normals.push(aiMesh.ptr.normals[i].z);
+            
             if (aiMesh.ptr.textureCoords[0] != null) {
                 uv.push(aiMesh.ptr.textureCoords[0][i].x);
                 uv.push(aiMesh.ptr.textureCoords[0][i].y);
+                
+                if (calcTangents) {
+                    tangents.push(aiMesh.ptr.tangents[i].x);
+                    tangents.push(aiMesh.ptr.tangents[i].y);
+                    tangents.push(aiMesh.ptr.tangents[i].z);
+                    
+                    bitangents.push(aiMesh.ptr.bitangents[i].x);
+                    bitangents.push(aiMesh.ptr.bitangents[i].y);
+                    bitangents.push(aiMesh.ptr.bitangents[i].z);
+                }
             }
         }
         
@@ -109,27 +141,10 @@ class Main
             }
         }
         
-        var diffuseTexture:String = "";
-        var diffuseColor:Vec3Struct = {x: 0, y: 0, z: 0};
-        if (scene.ptr.hasMaterials()) {
-            if (aiMesh.ptr.materialIndex >= 0) {
-                var aiMaterial:Pointer<AiMaterial> = scene.ptr.materials[aiMesh.ptr.materialIndex];
-                var count:Int = aiMaterial.ptr.getTextureCount(AiTextureType.aiTextureType_DIFFUSE);
-                for (l in 0...count) {
-                    var path:Pointer<AiString> = AiString.create();
-                    aiMaterial.ptr.getTexture(AiTextureType.aiTextureType_DIFFUSE, l, path.ptr);
-                    diffuseTexture = path.ptr.c_str().toString();
-                    path.destroy();
-                    path = null;
-                }
-            }
-        }
-        
         var mesh:MeshStruct = {
             indices: indices,
             vertices: vertices,
             normals: normals,
-            uv: uv,
             transformMatrix : {
                 a1: node.ptr.transformation.a1,
                 a2: node.ptr.transformation.a2,
@@ -147,12 +162,40 @@ class Main
                 d2: node.ptr.transformation.d2,
                 d3: node.ptr.transformation.d3,
                 d4: node.ptr.transformation.d4
-            },
-            material: {
-                diffuseTexture: diffuseTexture,
-                diffuseColor: diffuseColor
             }
         };
+        
+        if (uv.length > 0) {
+            mesh.uv = uv;
+            if (tangents.length > 0) {
+                mesh.tangents = tangents;
+            }
+            if (bitangents.length > 0) {
+                mesh.bitangents = bitangents;
+            }
+        }
+        
+        if (scene.ptr.hasMaterials()) {
+            var diffuseTexture:String = "";
+            var diffuseColor:Vec3Struct = {x: 0, y: 0, z: 0};
+            
+            if (aiMesh.ptr.materialIndex >= 0) {
+                var aiMaterial:Pointer<AiMaterial> = scene.ptr.materials[aiMesh.ptr.materialIndex];
+                var count:Int = aiMaterial.ptr.getTextureCount(AiTextureType.aiTextureType_DIFFUSE);
+                for (l in 0...count) {
+                    var path:Pointer<AiString> = AiString.create();
+                    aiMaterial.ptr.getTexture(AiTextureType.aiTextureType_DIFFUSE, l, path.ptr);
+                    diffuseTexture = path.ptr.c_str().toString();
+                    path.destroy();
+                    path = null;
+                }
+            }
+            
+            mesh.material = {
+                diffuseTexture: diffuseTexture,
+                diffuseColor: diffuseColor
+            };
+        }
         
         outputModel.meshes.push(mesh);
     }
@@ -169,9 +212,11 @@ typedef MeshStruct =
     var indices:Array<Int>;
     var vertices:Array<Float>;
     var normals:Array<Float>;
-    var uv:Array<Float>;
     var transformMatrix:Mat4Struct;
-    var material:MaterialStruct;
+    @:optional var uv:Array<Float>;
+    @:optional var material:MaterialStruct;
+    @:optional var tangents:Array<Float>;
+    @:optional var bitangents:Array<Float>;
 }
 
 typedef Mat4Struct = 
