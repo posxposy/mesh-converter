@@ -9,7 +9,6 @@ import assimp.AiScene;
 import assimp.AiString;
 import assimp.AiTextureType;
 import cpp.Lib;
-import assimp.AssimpBuild;
 import assimp.AssimpImporter;
 import cpp.Pointer;
 import cpp.zip.Compress;
@@ -23,7 +22,20 @@ import sys.io.File;
  * @author Dmitry Hryppa	http://themozokteam.com/
  */
 
-class Main 
+@:buildXml('
+    <files id="haxe">
+        <compilerflag value="-I${haxelib:assimp-haxe}/../cpp/assimp/include"/>
+    </files>
+    <files id="__main__">
+        <compilerflag value="-I${haxelib:assimp-haxe}/../cpp/assimp/include"/>
+    </files>
+    
+    <target id="haxe">
+        <lib name = "../lib/assimp-vc140.lib" if = "windows" />
+    </target>
+')
+
+class Main
 {
     private static var importer:AssimpImporter;
     private static var scene:Pointer<AiScene>;
