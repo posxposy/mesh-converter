@@ -77,7 +77,7 @@ class Main
         }
         
         importer = new AssimpImporter();
-        scene = importer.readFile(inputFile, flags);
+        scene = importer.readFileFromMemory(File.getBytes(inputFile).getData(), flags);//importer.readFile(inputFile, flags);
         if (scene == null || scene.ptr.flags == AiScene.AI_SCENE_FLAGS_INCOMPLETE || scene.ptr.rootNode == null) {
             Lib.println("Something went wrong.");
             return;
@@ -120,6 +120,7 @@ class Main
         var tangents:Array<Float> = new Array<Float>();
         var bitangents:Array<Float> = new Array<Float>();
         var uv:Array<Float> = new Array<Float>();
+        var colors:Array<Float> = new Array<Float>();
         
         for (i in 0...aiMesh.ptr.numVertices) {
             vertices.push(aiMesh.ptr.vertices[i].x);
@@ -129,6 +130,13 @@ class Main
             normals.push(aiMesh.ptr.normals[i].x);
             normals.push(aiMesh.ptr.normals[i].y);
             normals.push(aiMesh.ptr.normals[i].z);
+            
+            if (aiMesh.ptr.hasVertexColors(index)) {
+                colors.push(aiMesh.ptr.colors[index][i].r);
+                colors.push(aiMesh.ptr.colors[index][i].g);
+                colors.push(aiMesh.ptr.colors[index][i].b);
+                colors.push(aiMesh.ptr.colors[index][i].a);
+            }
             
             if (aiMesh.ptr.textureCoords[0] != null) {
                 uv.push(aiMesh.ptr.textureCoords[0][i].x);
@@ -158,6 +166,7 @@ class Main
             indices: indices,
             vertices: vertices,
             normals: normals,
+            colors:colors,
             transformMatrix : {
                 a1: node.ptr.transformation.a1,
                 a2: node.ptr.transformation.a2,
@@ -261,6 +270,7 @@ typedef MeshStruct =
     @:optional var material:MaterialStruct;
     @:optional var tangents:Array<Float>;
     @:optional var bitangents:Array<Float>;
+    @:optional var colors:Array<Float>;
 }
 
 typedef Mat4Struct = 
